@@ -82,7 +82,7 @@ def ReduceAtomMatrix(mat,moleculetoindexlist,moleculesgrown,indextomolecule):
 
 def GenerateDictionaries(molecules,donormaxedgesout):
     moleculenametodics={}
-    labeltodonoracceptorlabel={'H':'D','F':'A','O':'A','S':'A','N':'A','C':'D'}
+    labeltodonoracceptorlabel={'H':'D','F':'A','O':'A','S':'A','N':'A','C':'A'}
     labeltovalenceelectrons={'H':1,'C':4,'O':6,'S':6,'F':7}
     atomicsymboltovdwradius= {"H" : 1.20, "Li": 1.82, "Na": 2.27, "K": 2.75, "Rb": 3.03, "Cs": 3.43,"Be": 1.53, "Mg": 1.73, "Ca": 2.31, "B": 1.92, "C": 1.70, "N": 1.55, "O":1,"P" : 1.80, "S" : 1.80, "F" : 1.47, "Cl":1.75, "Br":1.85, "Zn":1.39}
     atomicsymboltoelectronegativity={"H":2.2,"C":2.55,"O":3.44,"S":2.58,"F":3.98} 
@@ -1235,10 +1235,9 @@ def ComputeEdges(bondvector,bondindextoindexpair,bondindicesgrown,atomsum):
         value=bondvector[i]
         if value==1:
             for index in indexpair:
-                if index in bondindicesgrown:
-                    if index not in indextoedges.keys():
-                        indextoedges[index]=0
-                    indextoedges[index]+=1
+                if index not in indextoedges.keys():
+                    indextoedges[index]=0
+                indextoedges[index]+=1
     return indextoedges
 
 
