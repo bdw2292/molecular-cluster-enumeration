@@ -559,7 +559,6 @@ def DetermineMoleculeTypes(allowedindexes,atomindextosymtype,moleculetoindexlist
 
 
 def FindGroupAutomorphismFingerprint(allowedindexes,atomtypetoindexlistallmolecules,atomindextosymtype,indexpairtobondindex,moleculetoindexlist,indextomolecule,rowindextoatomindex,bondindicesgrown,bondvector):
-    start=time.time()
     newatomtypetoindexlistallmolecules={}
     indextomoleculetypeindexlist=DetermineMoleculeTypes(allowedindexes,atomindextosymtype,moleculetoindexlist,indextomolecule,rowindextoatomindex)
     
@@ -625,8 +624,6 @@ def FindGroupAutomorphismFingerprint(allowedindexes,atomtypetoindexlistallmolecu
     for k, v in sorted(atomindextosymtypechoicelist.items()):
         if v not in choices:
             choices.append(v)
-    endpreprocess=time.time()
-    preprocess=endpreprocess-start
     bondindextoindexpair={v: k for k, v in indexpairtobondindex.items()} 
     atomsets = [set(seq) for seq in choices]
         
@@ -861,13 +858,9 @@ def ConvertOldPairsToNewPairs(oldindextonewindex,indexpairtobondindex,allowedind
     return newindexpairtobondindex
 
 def InnerGraphIterLoopFingerprint(bondvector,bondvectoridx,allvertices,atomtypetoindexlistallmolecules,atomindextosymtype,indexpairtobondindex,moleculetoindexlist,indextomolecule,rowindextoatomindex,subgroupfingerprints,mappedindices,lastsubgroupindex,subgroupindextobondvectorindexes,subgroupindex,bondindicesgrown,bondindextonewindexpairmaps,atomindextoatomindicessametypemaps,moleculetomoleculessametypemaps,moleculetomoleculeindexmaps,moleculetonewindexlistmaps):
-    startinner=time.time()
-    startauto=time.time()
     
     atomsets,oldindextonewindex,bondindextonewindexpair,atomindextoatomindicessametype,moleculetomoleculessametype,moleculetomoleculeindex,moleculetonewindexlist=FindGroupAutomorphismFingerprint(allvertices,atomtypetoindexlistallmolecules,atomindextosymtype,indexpairtobondindex,moleculetoindexlist,indextomolecule,rowindextoatomindex,bondindicesgrown,bondvector)
     
-    endauto=time.time()
-    autotime=endauto-startauto
     if bondvectoridx!=0:
         found=np.all(np.isin(atomsets,np.array(subgroupfingerprints)))
     else:
@@ -1027,6 +1020,7 @@ def MoleculeTypeAutomorphismGroupGenerator(atomindextoatomindicessametype,molecu
     perms=MergePermutations(rotslist)
     perms=CombineReflectionsRotations(perms,otherperms)
     permtoindextopermindex={}
+    allatomindices=list(atomindextoatomindicessametype.keys())
     for perm in perms:
         indextopermindex=IndexToPermIndex(perm)
         permtoindextopermindex[tuple(perm)]=indextopermindex
@@ -1036,13 +1030,16 @@ def MoleculeTypeAutomorphismGroupGenerator(atomindextoatomindicessametype,molecu
             indexmol=moleculeindextomolecule[index]
             permmol=moleculeindextomolecule[permindex]
             indexmolatomlist=moleculetonewindexlist[indexmol]
-            permmolatomlist=moleculetonewindexlist[permmol] 
+            permmolatomlist=moleculetonewindexlist[permmol]
             for idx in indexmolatomlist:
                indicessametype=atomindextoatomindicessametype[idx]
                for oidx in indicessametype:
                   if oidx in permmolatomlist:
                       if oidx not in atomindextopermindex.values():
                           atomindextopermindex[idx]=oidx
+        for atomindex in allatomindices:
+            if atomindex not in atomindextopermindex.keys():
+                atomindextopermindex[atomindex]=permindex
         bondindextopermindex={}       
         for newindexpair,bondindex in newindexpairtobondindex.items():
             firstpermindex=atomindextopermindex[newindexpair[0]]
@@ -1054,26 +1051,20 @@ def MoleculeTypeAutomorphismGroupGenerator(atomindextoatomindicessametype,molecu
                 permbondindex=newindexpairtobondindex[ls[::-1]]
             bondindextopermindex[bondindex]=permbondindex
         bondauto=list(bondindextopermindex.values())
-        imagesmatrix.append(bondauto)
+        if bondauto not in imagesmatrix:
+            imagesmatrix.append(bondauto)
     return imagesmatrix
 
 def InnerGraphIterLoop(allvertices,indexpairtobondindex,bondindicesgrown,subgroupfingerprints,subgroupimageindexmatrix,indexmaps,atomsets,oldindextonewindex,bondindextonewindexpair,atomindextoatomindicessametype,moleculetomoleculessametype,moleculetomoleculeindex,moleculetonewindexlist):
-    startinner=time.time()
     newallvertices=[oldindextonewindex[i] for i in allvertices]
     newindexpairtobondindex=ConvertOldPairsToNewPairs(oldindextonewindex,indexpairtobondindex,newallvertices)
-
-    genstarttime=time.time()
     reducedimagesmatrix=MoleculeTypeAutomorphismGroupGenerator(atomindextoatomindicessametype,moleculetomoleculessametype,moleculetomoleculeindex,moleculetonewindexlist,newindexpairtobondindex)
 
-    genendtime=time.time()
-    gentime=genendtime-genstarttime
     newbondindextoindexpair={v: k for k, v in newindexpairtobondindex.items()}
     
     subgroupimageindexmatrix.append(reducedimagesmatrix)
     indexmaps.append(newindexpairtobondindex)
 
-    endinner=time.time()
-    end=startinner-endinner
 
     return subgroupimageindexmatrix,indexmaps
 
@@ -1118,58 +1109,39 @@ def GrowBondVectors(indexpairtobondindex,orderedbondindexlist,indextomolecule,in
         lastsubgroupindex=-1
         subgroupindex=0
         moleculetonewindexlistmaps=[]
-        startenum=time.time()
-        print('outer indexpairtobondindex',indexpairtobondindex) 
         for bondvectoridx in tqdm(range(len(bondvectors)),desc='Enumerating Unique Subgroups, GraphLength=%s%%'%prog):
             bondvector=bondvectors[bondvectoridx]
             subgroupfingerprints,mappedindices,bondindextonewindexpairmaps,lastsubgroupindex,subgroupindextobondvectorindexes,subgroupindex,atomindextoatomindicessametypemaps,moleculetomoleculessametypemaps,moleculetomoleculeindexmaps,moleculetonewindexlistmaps=InnerGraphIterLoopFingerprint(bondvector,bondvectoridx,allvertices,atomtypetoindexlistallmolecules,atomindextosymtype,indexpairtobondindex,moleculetoindexlist,indextomolecule,rowindextoatomindex,subgroupfingerprints,mappedindices,lastsubgroupindex,subgroupindextobondvectorindexes,subgroupindex,bondindicesgrown,bondindextonewindexpairmaps,atomindextoatomindicessametypemaps,moleculetomoleculessametypemaps,moleculetomoleculeindexmaps,moleculetonewindexlistmaps)
         subgroupimageindexmatrix,indexmaps=GenerateAllGroupsSerial(allvertices,indexpairtobondindex,bondindicesgrown,subgroupfingerprints,subgroupimageindexmatrix,indexmaps,mappedindices,bondindextonewindexpairmaps,atomindextoatomindicessametypemaps,moleculetomoleculessametypemaps,moleculetomoleculeindexmaps,moleculetonewindexlistmaps)
-        finalenum=time.time()
-        enumtime=finalenum-startenum 
         subgroupimageindexmatrix=np.array(subgroupimageindexmatrix)
         bondvectors=OrderGraphsBySubGroups(bondvectors,subgroupindextobondvectorindexes,maxcheckindex)
         newbondvectors=[]
-        startgrpenum=time.time()
         for bondvectorgroupidx in tqdm(range(len(bondvectors)),desc='Iterating over Subgroups, GraphLength=%s'%prog):
             bondvectorgroup=bondvectors[bondvectorgroupidx]
-            startunqinv=time.time() 
             newindexpairtobondindex=indexmaps[bondvectorgroupidx]
             imageindexmatrix=subgroupimageindexmatrix[bondvectorgroupidx,:]
             uniqueinvariantsarray=FindAllInvariants(newindexpairtobondindex,imageindexmatrix,bondindextoneighborbondindexes,bondindicesgrown,maxgraphinvorder)
-            endunqinv=time.time()
-            unqinvtime=endunqinv-startunqinv
             if len(uniqueinvariantsarray)!=0:
-                startinv=time.time()
                 
                 invmatrix=ComputeInvariantsArrayForAllGraphs(bondvectorgroup,imageindexmatrix,uniqueinvariantsarray,bondindicesgrown,bondindextoindexpair)
-                endinv=time.time()
-                invtime=endinv-startinv
-                startsort=time.time()
                 sortedbondvectorgroups,uniqueinvariantarrays=SortBondVectors(bondvectorgroup,invmatrix)
                 if len(sortedbondvectorgroups)==0:
                     raise ValueError('error, no sorting')
-                endsort=time.time()
                 
-                sorttime=endsort-startsort
             else:
                 sortedbondvectorgroups=np.array([bondvectorgroup])
             newsortedbondvectorgroups=[]
-            for k in range(len(sortedbondvectorgroups)):
+            for k in tqdm(range(len(sortedbondvectorgroups)),desc='Checking Isomorphisms for group of graphs'):
                 sortedbondvectorgroup=sortedbondvectorgroups[k]
                 length=len(sortedbondvectorgroup)
                 bondlengthtolengthofsortedbondvectorgroups[maxcheckindex].append(length)
-                startiso=time.time()
                 indexestodelete=FindIsomorphicGraphsWithinSubGroup(sortedbondvectorgroup,imageindexmatrix,locsintermolecularlist,atomsum,bondindicesgrown,bondindextoindexpair)
-                endiso=time.time()
-                isotime=endiso-startiso
                 if len(indexestodelete)!=0:
                     sortedbondvectorgroup=np.delete(sortedbondvectorgroup,indexestodelete,axis=0)
                 newsortedbondvectorgroups.extend(sortedbondvectorgroup[:])
             bondvectorgroup=np.array(newsortedbondvectorgroups)   
             newbondvectors.extend(bondvectorgroup[:])
         bondvectors=np.array(newbondvectors)
-        finalgrpenum=time.time()
-        grpenum=finalgrpenum-startgrpenum
     return bondvectors,bondlengthtolengthofsortedbondvectorgroups
 
 
@@ -1385,6 +1357,31 @@ def GenerateAtomIndexToSymType(moleculetoatomindextosymclass,indextomolecule,row
     return atomindextosymtype
 
 
+def FilterCombinations(combs,moleculelist):
+    newcombs = [] 
+    combstried=[]
+    combtried=InnerMoleculeNameArray(moleculelist)
+    moleculelistset=set(combtried)
+    for comb in combs:
+        combtried=InnerMoleculeNameArray(comb)
+        combtriedset=set(combtried)
+        if combtried not in combstried and len(moleculelistset)==len(combtriedset):
+            combstried.append(combtried)
+            newcombs.append(comb)
+    return newcombs 
+
+
+def InnerMoleculeNameArray(comb):
+    combtried=[]
+    for molname in comb:
+        filenamesplit=molname.split('.')
+        innerfile=filenamesplit[0]
+        molnamesplit=innerfile.split('_')
+        truemolname=molnamesplit[0]
+        combtried.append(truemolname)
+    return combtried
+
+
 def GetCombinations(n,moleculenametodic,maxgraphinvorder,prevgraphs,moltypestoclssizetoindextobondindex):
     moleculetoatomindextomaxedgesin=moleculenametodics['atomindextomaxedgesin']
     moleculetoatomindextomaxedgesout=moleculenametodics['atomindextomaxedgesout']
@@ -1406,6 +1403,7 @@ def GetCombinations(n,moleculenametodic,maxgraphinvorder,prevgraphs,moltypestocl
     moleculelist,moleculetoatomindextomaxedgesin,moleculetoatomindextomaxedgesout,moleculetoatomindextolabelgraphs,moleculetoatomindextolabelrdkit,moleculetonumberofatoms,moleculetoatomindextosymclass,moleculetobondconnectivitylist,moleculetoatomindextoatomicsymbol,moleculetoOBmol,moleculetoatomicpairtodistance,moleculetoatomindextoinitialposition,moleculessametype=DuplicateMoleculesAndMolecularPropertyDictionaries(moleculenames,n,moleculetoatomindextomaxedgesin,moleculetoatomindextomaxedgesout,moleculetoatomindextolabelgraphs,moleculetoatomindextolabelrdkit,moleculetonumberofatoms,moleculetoatomindextosymclass,moleculetobondconnectivitylist,moleculetoatomindextoatomicsymbol,moleculetoOBmol,moleculetoatomicpairtodistance,moleculetoatomindextoinitialposition)
     
     combs = combinations(moleculelist,n) # make matrices with these combs
+    combs = FilterCombinations(combs,moleculelist)
     digraphmatarray=[] # store all matrices for every combination here
     graphmatarray=[]
     graphlabels=[]
@@ -1424,7 +1422,6 @@ def GetCombinations(n,moleculenametodic,maxgraphinvorder,prevgraphs,moltypestocl
         print('*********************************************************')
         combarray.append(comb)
         atomsum,indextomaxedgesin,indextomaxedgesout,indextoatomlabelgraphs,indextoatomlabelrdkit,indextovdwradius,rowindextoatomindex,intermolecularinteractionsmatrix,moleculetoindexlist,indextomolecule,indextoelectronegativity=DetermineAllowedIntermolecularInteractionsMatrix(comb,moleculetonumberofatoms,moleculetoatomindextolabelgraphs,moleculetoatomindextolabelrdkit,moleculetoatomindextoatomicsymbol,moleculetoatomindextosymclass,moleculetoatomindextomaxedgesin,moleculetoatomindextomaxedgesout,atomicsymboltovdwradius,labeltodonoracceptorlabel,atomicsymboltoelectronegativity)
-        print('moleculetoindexlist',moleculetoindexlist) 
         locsintermolecularlist,intermoleculararray=DetermineAllowedIntermolecularInteractions(intermolecularinteractionsmatrix)
         allindexes=AllIndexes(moleculetoindexlist)
         neighborindexes,indextoneighborindexes=GrabNeighborIndexes(allindexes,indextomolecule,moleculetoindexlist,moleculetoOBmol,rowindextoatomindex)
@@ -1493,8 +1490,6 @@ def GenerateMolTypesFromComb(comb):
     return tuple(set(moltypes))
 
 def ReorderTheBondIndexList(moltypestoclssizetoindextobondindex,indexpairtobondindex,comb,clssize):
-    print('moltypestoclssizetoindextobondindex',moltypestoclssizetoindextobondindex)
-    print('current indexpairtobondindex',indexpairtobondindex)
     moltypes=GenerateMolTypesFromComb(comb)
     prevclssize=clssize-1
     if moltypes not in moltypestoclssizetoindextobondindex.keys():
@@ -1508,21 +1503,18 @@ def ReorderTheBondIndexList(moltypestoclssizetoindextobondindex,indexpairtobondi
         else:
             previndexpairtobondindex=clssizetoindextobondindex[prevclssize]
 
-    print('previndexpairtobondindex',previndexpairtobondindex)
     newindexpairtobondindex=previndexpairtobondindex.copy()
     if len(previndexpairtobondindex.keys())==0:
         orderedbondindexlist=list(indexpairtobondindex.values())
     else:
         startindex=len(previndexpairtobondindex.keys())
         count=startindex
-        print('startindex/count',count)
         for indexpair,bondindex in indexpairtobondindex.items():
             if indexpair not in newindexpairtobondindex.keys():
                 newindexpairtobondindex[indexpair]=count
                 count+=1
         orderedbondindexlist=list(newindexpairtobondindex.values())
         indexpairtobondindex=newindexpairtobondindex
-    print('indexpairtobondindexafter',indexpairtobondindex)
     if clssize not in clssizetoindextobondindex.keys():
         clssizetoindextobondindex[clssize]=indexpairtobondindex
         moltypestoclssizetoindextobondindex[moltypes]=clssizetoindextobondindex
@@ -1649,7 +1641,7 @@ def PlotMatrices(matrices,mylabels,molsperrow,outputfilepath,basename,digraph=Tr
         plt.savefig(basename+'_'+str(firstj)+'-'+str(secondj)+'.png')
 
 
-def PlotScalingAndUniqueGraphsAndStructuresAllSizes(maxmatsize,moleculenametodics,molsperrow,outputfileformat,pairwisedistanceratio,outputfilepath,stericcutoff,maxgraphinvorder):
+def PlotScalingAndUniqueGraphsAndStructuresAllSizes(maxmatsize,moleculenametodics,molsperrow,outputfileformat,pairwisedistanceratio,outputfilepath,stericcutoff,maxgraphinvorder,molecules):
     totalgrapharray=[]
     totalindextomoleculearray=[]
     narray=[]
@@ -1666,7 +1658,11 @@ def PlotScalingAndUniqueGraphsAndStructuresAllSizes(maxmatsize,moleculenametodic
     totalbondlengthtolengthofsortedbondvectorgroupsarray=[]
     reorderedbondvectormatrix=[]
     moltypestoclssizetoindextobondindex={}
-    for matsize in tqdm(range(2,maxmatsize+1),desc='Enumerating Graphs'):
+    if len(molecules)==1:
+        bgnclssize=2
+    else:
+        bgnclssize=len(molecules)
+    for matsize in tqdm(range(bgnclssize,maxmatsize+1),desc='Enumerating Graphs'):
         start=time.time()
         grapharray,reducematarray,reducelabelsarray,indextomoleculearray,rowindextoatomindexarray,moleculetoindexlistarray,graphlabels,rdkitlabels,moleculenametodics,indextovdwradiusarray,indextoelectronegativityarray,combarray,bondlengthtolengthofsortedbondvectorgroupsarray,moltypestoclssizetoindextobondindex,reorderedbondvectormatrix=GetCombinations(matsize,moleculenametodics,maxgraphinvorder,reorderedbondvectormatrix,moltypestoclssizetoindextobondindex)
         end=time.time()
@@ -2001,9 +1997,8 @@ def Generate3DStructures(matarray,totalindextomoleculearray,totalmoleculetoindex
 
         indextoreferencecoordinate=UpdateCoordinates(coords,indextoreferencecoordinate)
 
-        #indextoreferencecoordinate=RotateSystem(pairwiselocs,indextoreferencecoordinate,allindexes)
 
-        filenamearray=GenerateStructureFiles(indextoreferencecoordinate,moleculetoOBmol,indextomolecule,rowindextoatomindex,matidx,outputfileformat,filenamearray,moleculetoatomindextoatomicsymbol)
+        filenamearray=GenerateStructureFiles(indextoreferencecoordinate,moleculetoOBmol,indextomolecule,rowindextoatomindex,matidx,outputfileformat,filenamearray,moleculetoatomindextoatomicsymbol,moleculetoindexlist)
 
         if matsize!=prevmatsize:
             end=time.time()
@@ -2028,15 +2023,17 @@ def GenerateCoordinateGuesses(indextoreferencecoordinate):
     return coordinatesguess
 
 
-def GenerateStructureFiles(indextoreferencecoordinate,moleculetoOBmol,indextomolecule,rowindextoatomindex,matidx,outputfileformat,filenamearray,moleculetoatomindextoatomicsymbol):
+def GenerateStructureFiles(indextoreferencecoordinate,moleculetoOBmol,indextomolecule,rowindextoatomindex,matidx,outputfileformat,filenamearray,moleculetoatomindextoatomicsymbol,moleculetoindexlist):
     etab = openbabel.OBElementTable() 
     newmol=openbabel.OBMol()
     mlist=[]
+    mnamelist=[]
     for index,coord in indextoreferencecoordinate.items():
         molecule=indextomolecule[index]
         atomindextoatomicsymbol=moleculetoatomindextoatomicsymbol[molecule]
         mol=moleculetoOBmol[molecule]
         mlist.append(mol)
+        mnamelist.append(molecule)
         atomindex=rowindextoatomindex[index]
         molatom=mol.GetAtom(atomindex)
         atomicsymb=atomindextoatomicsymbol[atomindex-1]
@@ -2045,7 +2042,18 @@ def GenerateStructureFiles(indextoreferencecoordinate,moleculetoOBmol,indextomol
         molatom.SetAtomicNum(atomicnum)
         newmol.AddAtom(molatom)
         newmolatom=newmol.GetAtom(atomindex)
-    for m in mlist:
+    molecules=list(moleculetoindexlist.keys())
+    molprefixes=InnerMoleculeNameArray(molecules)
+    moleculetomolprefix=dict(zip(molecules,molprefixes))
+    for midx in range(len(mlist)):
+        m=mlist[midx]
+        mname=mnamelist[midx]
+        mnamesplit=mname.split('.')
+        innermname=mnamesplit[0]
+        innermnamesplit=innermname.split('_')
+        prefix=innermnamesplit[0]
+        samemols=KeysForValues(prefix,moleculetomolprefix)
+        newrowindextoatomindex=GrabMappedIndicesFromSameMoleculeTypes(rowindextoatomindex,moleculetoindexlist,samemols)
         bonditer=openbabel.OBMolBondIter(m)
         for bond in bonditer:
            bgnatom=bond.GetBeginAtom()
@@ -2053,8 +2061,8 @@ def GenerateStructureFiles(indextoreferencecoordinate,moleculetoOBmol,indextomol
            endatom=bond.GetEndAtom()
            endatomindex=endatom.GetIdx()
            bondorder=bond.GetBO()
-           bgnkeys=KeysForValues(bgnatomindex,rowindextoatomindex)
-           endkeys=KeysForValues(endatomindex,rowindextoatomindex)
+           bgnkeys=KeysForValues(bgnatomindex,newrowindextoatomindex)
+           endkeys=KeysForValues(endatomindex,newrowindextoatomindex)
            zipped=zip(bgnkeys,endkeys) 
            for ls in zipped:
                firstidx=ls[0]+1
@@ -2067,6 +2075,17 @@ def GenerateStructureFiles(indextoreferencecoordinate,moleculetoOBmol,indextomol
     obConversion.WriteFile(newmol,filename)
     filenamearray.append(filename)
     return filenamearray
+
+
+def GrabMappedIndicesFromSameMoleculeTypes(rowindextoatomindex,moleculetoindexlist,samemols):
+    newrowindextoatomindex={}
+    for mol in samemols:
+        indexlist=moleculetoindexlist[mol]
+        for index in indexlist:
+            atomindex=rowindextoatomindex[index]
+            newrowindextoatomindex[index]=atomindex
+    return newrowindextoatomindex
+
 
 def KeysForValues(atomindex,rowindextoatomindex):
     keys=[]
@@ -2599,24 +2618,6 @@ def SumProjectedPairwiseDistances(indextoprojectedcoordinate,pairwiselocs):
 
 
 
-def RotateSystem(pairwiselocs,indextoreferencecoordinate,allindexes):
-    indextonumberofpairwiseinteractions=AtomIndexToNumberOfPairwiseInteractions(pairwiselocs,allindexes)
-    atomindex1,atomindex2,atomindex3=ChoosePlaneAtomIndices(indextonumberofpairwiseinteractions,indextoreferencecoordinate)
-    referencepoint,normalvector=GeneratePlane(atomindex1,atomindex2,atomindex3,indextoreferencecoordinate)
-
-    def MaximizeProjectedDistances(params,*args):
-        indextoreferencecoordinate=args[0]
-        indextoreferencecoordinate=UpdateCoordinatesViaRotation(indextoreferencecoordinate,params)
-        indextoprojectedcoordinate=ProjectPairwisePointsOnToPlane(referencepoint,normalvector,pairwiselocs,indextoreferencecoordinate)  
-        cost=SumProjectedPairwiseDistances(indextoprojectedcoordinate,pairwiselocs)
-        cost=-1*cost
-        return cost
-
-    sol = minimize(MaximizeProjectedDistances, [0,0,0], method='SLSQP',args=(indextoreferencecoordinate),bounds=[tuple([0,360]),tuple([0,180]),tuple([0,360])],options={'disp':False, 'maxiter': 10000, 'ftol': 1e-6,'eps':5})
-
-
-    indextoreferencecoordinate=UpdateCoordinatesViaRotation(indextoreferencecoordinate,sol.x)
-    return indextoreferencecoordinate
 
 
 if gen3Dimages==True:
@@ -2667,4 +2668,4 @@ else:
         os.chdir(outputfilepath)
 
 
-    PlotScalingAndUniqueGraphsAndStructuresAllSizes(maxclustersize,moleculenametodics,molsperrow,outputfileformat,pairwisedistanceratio,outputfilepath,stericcutoff,maxgraphinvorder)
+    PlotScalingAndUniqueGraphsAndStructuresAllSizes(maxclustersize,moleculenametodics,molsperrow,outputfileformat,pairwisedistanceratio,outputfilepath,stericcutoff,maxgraphinvorder,molecules)
