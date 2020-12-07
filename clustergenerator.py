@@ -361,8 +361,10 @@ def CreateGraph(array):
     return gr
 
 
-def LabelAllowedIntermolecularInteractions(pairwiselocs,indextomolecule):
+def LabelAllowedIntermolecularInteractions(pairwiselocs,indextomolecule,indextoneighborindexes):
     intermolecularinteractionbool={}
+    intermolecularinteractiontocounts={}
+    intermolecularinteractiontobackandforthpairwise={}
     for loc in pairwiselocs:
         first=loc[0]
         second=loc[1]
@@ -372,7 +374,16 @@ def LabelAllowedIntermolecularInteractions(pairwiselocs,indextomolecule):
         revkey=secondmolecule+'-'+firstmolecule
         intermolecularinteractionbool[key]=True
         intermolecularinteractionbool[revkey]=True
-    return intermolecularinteractionbool
+        combined=tuple(set([key,revkey]))
+
+        backandforthpairwise,backandforthpair=CheckIfPairwiseInteractionIsBackAndForth(loc,pairwiselocs,indextomolecule,indextoneighborindexes)
+        if combined not in intermolecularinteractiontocounts.keys():
+            intermolecularinteractiontocounts[combined]=0
+        if combined in intermolecularinteractiontocounts.keys():
+            intermolecularinteractiontocounts[combined]+=1
+        if combined not in intermolecularinteractiontobackandforthpairwise.keys():
+            intermolecularinteractiontobackandforthpairwise[combined]=backandforthpairwise
+    return intermolecularinteractionbool,intermolecularinteractiontocounts,intermolecularinteractiontobackandforthpairwise
 
 def CheckMaxEdgesInAndOut(indextoedges,indextomolecule,indextomaxedgesin,indextomaxedgesout,moleculetoatomindextoatomicsymbol,rowindextoatomindex,labeltodonoracceptorlabel):
     viable=True
@@ -419,8 +430,9 @@ def GrabAllIndexesPairwiseConnected(pairwiselocs,index):
     return connectedindexes,connectedpairs
 
 
-def RestrictImpossibleAtomicIntermolecularInteractions(indextoedgesout,indextomolecule,intermolecularinteractionbool,pairwiselocs,moleculetoindexlist,indextoneighborindexes,check): 
+def RestrictImpossibleAtomicIntermolecularInteractions(indextoedgesout,indextomolecule,intermolecularinteractionbool,pairwiselocs,moleculetoindexlist,indextoneighborindexes,check,intermolecularinteractiontocounts,intermolecularinteractiontobackandforthpairwise): 
     # if atom has >1 edgesout the molecules interacting with it must be pairwise connected(check this only if grown all bonds), also atoms on other molecules interacting with that atom can at most have one edgeout
+    # if molecule pair has two or more interactions and it is not back and forth pairwise then eliminate graph
     viable=True
     for index,edgesout in indextoedgesout.items():
         if edgesout>1:
@@ -430,10 +442,6 @@ def RestrictImpossibleAtomicIntermolecularInteractions(indextoedgesout,indextomo
                 j=i+1
                 firstidx=connectedindexes[i]
                 secondidx=connectedindexes[j]
-                firstmolecule=indextomolecule[firstidx]
-                secondmolecule=indextomolecule[secondidx]
-                firstindexlist=moleculetoindexlist[firstmolecule]
-                secondindexlist=moleculetoindexlist[secondmolecule]
                 firstneighbs=indextoneighborindexes[firstidx]
                 secondneighbs=indextoneighborindexes[secondidx]
                 neighbslist=[firstneighbs,secondneighbs]
@@ -445,7 +453,11 @@ def RestrictImpossibleAtomicIntermolecularInteractions(indextoedgesout,indextomo
                             edgesout=0
                         if edgesout>1:
                             viable=False
-                
+    
+    for key,counts in intermolecularinteractiontocounts.items():
+        backandforthpairwise=intermolecularinteractiontobackandforthpairwise[key]
+        if counts>1 and backandforthpairwise==False:
+            viable=False
     return viable
 
 def AddBondsAndDonorAcceptorDirection(comb,moleculetobondconnectivitylist,moleculetonumberofatoms,pairwiselocs,indextomolecule,moleculetoatomindextoatomicsymbol,rowindextoatomindex,labeltodonoracceptorlabel,array,moleculetoindexlist):
@@ -461,7 +473,6 @@ def AddBondsAndDonorAcceptorDirection(comb,moleculetobondconnectivitylist,molecu
     grapharray=np.copy(array)
     for bond in valuestoaddback: # add bonds to graph
         grapharray[bond[0],bond[1]]=1
-
     # now if donor flip over the 1 accross diagonal for better depiction
     for loc in pairwiselocs:
         first=loc[0]
@@ -474,7 +485,6 @@ def AddBondsAndDonorAcceptorDirection(comb,moleculetobondconnectivitylist,molecu
         if donoracceptorlabel=='D':
             grapharray[second,first]=1
             grapharray[first,second]=0
-
     return grapharray
 
 
@@ -800,8 +810,7 @@ def FindNeighborBonds(indexpairtobondindex,indextoneighborindexes):
                 nbondidx=indexpairtobondindex[rpair]
             if nbondidx!=None:
                 neighbs.append(nbondidx)
-        if len(neighbs)!=0:
-            bondindextoneighborbondindexes[bondindex]=neighbs
+        bondindextoneighborbondindexes[bondindex]=neighbs
     return bondindextoneighborbondindexes
 
 
@@ -1179,8 +1188,8 @@ def CheckGraph(bondvector,bondindextoindexpair,indextomolecule,indextomaxedgesin
     else:
         check=len(bondvector)==len(bondindextoindexpair.keys())
         pairwiselocs=PairwiseLocationsFromArray(bondvector,bondindextoindexpair)
-        intermolecularinteractionbool=LabelAllowedIntermolecularInteractions(pairwiselocs,indextomolecule)
-        viable=RestrictImpossibleAtomicIntermolecularInteractions(indextoedgesout,indextomolecule,intermolecularinteractionbool,pairwiselocs,moleculetoindexlist,indextoneighborindexes,check) 
+        intermolecularinteractionbool,intermolecularinteractiontocounts,intermolecularinteractiontobackandforthpairwise=LabelAllowedIntermolecularInteractions(pairwiselocs,indextomolecule,indextoneighborindexes)
+        viable=RestrictImpossibleAtomicIntermolecularInteractions(indextoedgesout,indextomolecule,intermolecularinteractionbool,pairwiselocs,moleculetoindexlist,indextoneighborindexes,check,intermolecularinteractiontocounts,intermolecularinteractiontobackandforthpairwise) 
     if viable==True:
         if np.all(bondvector==0)==True and len(bondvector)>1:
             viable=False
@@ -1426,17 +1435,16 @@ def GetCombinations(n,moleculenametodic,maxgraphinvorder,prevgraphs,moltypestocl
         allindexes=AllIndexes(moleculetoindexlist)
         neighborindexes,indextoneighborindexes=GrabNeighborIndexes(allindexes,indextomolecule,moleculetoindexlist,moleculetoOBmol,rowindextoatomindex)
         indexpairtobondindex=GenerateFlattenedArrayIndexMap(locsintermolecularlist)
+        
+        orderedbondindexlist,indexpairtobondindex,moltypestoclssizetoindextobondindex,previndexpairtobondindex=ReorderTheBondIndexList(moltypestoclssizetoindextobondindex,indexpairtobondindex,comb,n)    
         bondindextotypepair=GenerateBondIndexToTypePair(indexpairtobondindex,moleculetoatomindextosymclass,indextomolecule,rowindextoatomindex)
         atomindextosymtype=GenerateAtomIndexToSymType(moleculetoatomindextosymclass,indextomolecule,rowindextoatomindex) 
         bondindextoneighborbondindexes=FindNeighborBonds(indexpairtobondindex,indextoneighborindexes)
         allowedindexes=GenerateAllowedIndexes(indexpairtobondindex,allindexes)
         atomtypetoindexlistallmolecules=AtomTypeToIndexlistAllMolecules(moleculessametype,rowindextoatomindex,moleculetoindexlist,indextomolecule,moleculetoatomindextosymclass,allowedindexes,comb)
-        bondvector=np.ones(len(indexpairtobondindex.keys()))
-
-        orderedbondindexlist,indexpairtobondindex,moltypestoclssizetoindextobondindex,previndexpairtobondindex=ReorderTheBondIndexList(moltypestoclssizetoindextobondindex,indexpairtobondindex,comb,n)    
+        
         bondindextoindexpair={v: k for k, v in indexpairtobondindex.items()}
         moleculetobondindices=GenerateMoleculeToBondIndices(bondindextoindexpair,moleculetoindexlist)
-
         bondvectormatrix,bondlengthtolengthofsortedbondvectorgroups=GrowBondVectors(indexpairtobondindex,orderedbondindexlist,indextomolecule,indextomaxedgesin,indextomaxedgesout,moleculetoatomindextoatomicsymbol,rowindextoatomindex,labeltodonoracceptorlabel,moleculetoindexlist,moleculetoOBmol,moleculetoatomindextosymclass,moleculessametype,indextoneighborindexes,locsintermolecularlist,atomsum,bondindextoneighborbondindexes,maxgraphinvorder,moleculetobondindices,bondindextotypepair,atomtypetoindexlistallmolecules,atomindextosymtype,prevgraphs,previndexpairtobondindex)
         bondlengthtolengthofsortedbondvectorgroupsarray.append(bondlengthtolengthofsortedbondvectorgroups)
         moleculesgrown=list(moleculetoindexlist.keys())
@@ -1445,7 +1453,7 @@ def GetCombinations(n,moleculenametodic,maxgraphinvorder,prevgraphs,moltypestocl
         for bondvectoridx in range(len(bondvectormatrix)):
             append=False
             bondvector=bondvectormatrix[bondvectoridx]
-            #bondvector=ReorderBondVector(bondindicesgrown,bondvector,bondindextoindexpair)
+            bondvector=ReorderBondVector(bondindicesgrown,bondvector,bondindextoindexpair)
             reorderedbondvectormatrix.append(bondvector)
             array=AdjacencyMatrix(bondvector,locsintermolecularlist,atomsum)
             pairwiselocs,newpairwiselocs=PairwiseLocations(array)
@@ -1483,7 +1491,8 @@ def GetCombinations(n,moleculenametodic,maxgraphinvorder,prevgraphs,moltypestocl
 def GenerateMolTypesFromComb(comb):
     moltypes=[]
     for molecule in comb:
-        molsplit=molecule.split('_')
+        firstsplit=molecule.split('.')
+        molsplit=firstsplit[0].split('_')
         header=molsplit[0]
         if header not in moltypes:
             moltypes.append(header)
@@ -1518,7 +1527,6 @@ def ReorderTheBondIndexList(moltypestoclssizetoindextobondindex,indexpairtobondi
     if clssize not in clssizetoindextobondindex.keys():
         clssizetoindextobondindex[clssize]=indexpairtobondindex
         moltypestoclssizetoindextobondindex[moltypes]=clssizetoindextobondindex
-
     return orderedbondindexlist,indexpairtobondindex,moltypestoclssizetoindextobondindex,previndexpairtobondindex
 
 
@@ -1671,7 +1679,7 @@ def PlotScalingAndUniqueGraphsAndStructuresAllSizes(maxmatsize,moleculenametodic
         narray.append(matsize)
         totalcombsarray.append(combarray)
         totalbondlengthtolengthofsortedbondvectorgroupsarray.append(bondlengthtolengthofsortedbondvectorgroupsarray)
-        if len(grapharray)>1:
+        if len(grapharray)>0:
             totalgrapharray.extend(grapharray)
             reducedtotalgrapharray.extend(reducematarray)
             reducedtotallabels.extend(reducelabelsarray)
